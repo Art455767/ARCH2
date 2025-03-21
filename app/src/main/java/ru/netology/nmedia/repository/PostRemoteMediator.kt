@@ -33,7 +33,7 @@ class PostRemoteMediator(
                     if (postDao.isEmpty()) {
                         service.getLatest(state.config.initialLoadSize)
                     } else {
-                        val maxId = postDao.maxId() ?: return MediatorResult.Success(endOfPaginationReached = true)
+                        val maxId = postRemoteKeyDao.max() ?: return MediatorResult.Success(endOfPaginationReached = true)
                         service.getAfter(maxId, state.config.initialLoadSize)
                     }
                 }
@@ -43,8 +43,8 @@ class PostRemoteMediator(
                 }
 
                 LoadType.APPEND -> {
-                    val id = postRemoteKeyDao.min() ?: return MediatorResult.Success(endOfPaginationReached = false)
-                    service.getBefore(id, state.config.pageSize)
+                    val minId = postRemoteKeyDao.min() ?: return MediatorResult.Success(endOfPaginationReached = false)
+                    service.getBefore(minId, state.config.pageSize)
                 }
             }
 
@@ -54,6 +54,7 @@ class PostRemoteMediator(
             val body = response.body() ?: throw ApiError(response.code(), response.message())
 
             db.withTransaction {
+                postDao.insert(body.toEntity())
                 handleDatabaseInsert(loadType, body)
             }
             MediatorResult.Success(endOfPaginationReached = body.isEmpty())
@@ -65,12 +66,10 @@ class PostRemoteMediator(
     private suspend fun handleDatabaseInsert(loadType: LoadType, body: List<Post>) {
         when (loadType) {
             LoadType.REFRESH -> {
-                postDao.insert(body.toEntity())
                 updateRemoteKeysForRefresh(body)
             }
 
             LoadType.APPEND -> {
-                postDao.insert(body.toEntity())
                 updateRemoteKeysForAppend(body)
             }
 
